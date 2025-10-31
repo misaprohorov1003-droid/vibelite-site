@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VibeLite — Мини Viber</title>
+<style>
+body {margin:0; font-family: Arial, sans-serif; background: #f0f2f5;}
+#app {max-width:600px; margin:20px auto; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.2); position:relative;}
+header {background:#6c47ff; color:#fff; padding:15px; text-align:center; font-size:1.2em; position:relative;}
+#userStatus {position:absolute; top:10px; right:10px; background:#fff; color:#333; padding:5px 10px; border-radius:15px; font-size:0.9em; display:flex; align-items:center; gap:5px; box-shadow:0 0 5px rgba(0,0,0,0.2);}
+#userStatus img {width:20px; height:20px; border-radius:50%;}
+main {padding:15px;}
+input, button {width:100%; padding:10px; margin-top:10px; border-radius:5px; border:1px solid #ccc; box-sizing:border-box;}
+button {background:#6c47ff; color:#fff; border:none; cursor:pointer; transition:0.2s;}
+button:hover {background:#5937d9;}
+section {display:none;}
+.contact, .message {border-bottom:1px solid #eee; padding:10px; border-radius:5px; margin-bottom:5px;}
+.contact:hover {background:#f9f9f9; cursor:pointer;}
+.message.mine {background:#d1e7ff; text-align:right;}
+.message.their {background:#e6e6e6; text-align:left;}
+#messages {max-height:300px; overflow-y:auto; margin-bottom:10px; padding:5px; border:1px solid #ccc; border-radius:5px; background:#fafafa;}
+#chatHeader {font-weight:bold; margin-bottom:5px;}
+#searchResult div {padding:10px; border:1px solid #ccc; margin-top:5px; border-radius:5px; background:#f5f5f5; display:flex; justify-content:space-between; align-items:center;}
+</style>
+</head>
+<body>
+<div id="app">
+<header>📱 VibeLite
+  <div id="userStatus" style="display:none;"><img src="https://via.placeholder.com/20" alt="Avatar"><span id="userName"></span> (<span id="userPhone"></span>)</div>
+</header>
+<main>
+<section id="register">
+<h3>Регистрация</h3>
+<input id="regName" placeholder="Имя">
+<input id="regPhone" placeholder="Номер телефона (+380...)" type="tel">
+<button onclick="register()">Создать аккаунт</button>
+<p>Уже есть аккаунт? <a href="#" onclick="showLogin()">Войти</a></p>
+</section>
+
+<section id="login">
+<h3>Вход</h3>
+<input id="loginPhone" placeholder="Номер телефона" type="tel">
+<button onclick="login()">Войти</button>
+<p>Нет аккаунта? <a href="#" onclick="showRegister()">Создать</a></p>
+</section>
+
+<section id="contacts">
+<h3>Контакты</h3>
+<input id="searchPhone" placeholder="Поиск по номеру" type="tel">
+<button onclick="searchByPhone()">🔍 Найти</button>
+<div id="searchResult"></div>
+<div id="contactList" style="margin-top:10px;"></div>
+<button onclick="logout()">Выйти</button>
+</section>
+
+<section id="chat">
+<div id="chatHeader"></div>
+<div id="messages"></div>
+<input id="msgText" placeholder="Введите сообщение...">
+<button onclick="sendMessage()">Отправить</button>
+<button onclick="backToContacts()">⬅ Назад</button>
+</section>
+</main>
+</div>
+<script>
+let db = JSON.parse(localStorage.getItem('vibelite_db') || '{}');
+let currentUser = JSON.parse(localStorage.getItem('vibelite_user') || 'null');
+
+function saveDB(){ localStorage.setItem('vibelite_db', JSON.stringify(db)); }
+function show(id){ document.querySelectorAll('section').forEach(s=>s.style.display='none'); document.getElementById(id).style.display='block'; }
+function showRegister(){ show('register'); }
+function showLogin(){ show('login'); }
+function showContacts(){ renderContacts(); show('contacts'); }
+function showChat(){ show('chat'); }
+
+function updateUserStatus(){
+  if(currentUser){
+    document.getElementById('userStatus').style.display='flex';
+    document.getElementById('userName').textContent = currentUser.name;
+    document.getElementById('userPhone').textContent = currentUser.phone;
+  } else {
+    document.getElementById('userStatus').style.display='none';
+  }
+}
+
+if(currentUser){ showContacts(); updateUserStatus(); } else { showRegister(); }
+
+function register(){
+  const name = regName.value.trim();
+  const phone = regPhone.value.trim();
+  if(!name || !phone) return alert('Введите имя и номер!');
+  if(db[phone]) return alert('Такой номер уже зарегистрирован!');
+  db[phone] = {name, phone, contacts: [], messages:{}};
+  saveDB();
+  currentUser = db[phone];
+  localStorage.setItem('vibelite_user', JSON.stringify(currentUser));
+  updateUserStatus();
+  showContacts();
+}
+
+function login(){
+  const phone = loginPhone.value.trim();
+  if(!db[phone]) return alert('Пользователь не найден!');
+  currentUser = db[phone];
+  localStorage.setItem('vibelite_user', JSON.stringify(currentUser));
+  updateUserStatus();
+  showContacts();
+}
+
+function logout(){
+  currentUser = null;
+  localStorage.removeItem('vibelite_user');
+  updateUserStatus();
+  showLogin();
+}
+
+function renderContacts(){
+  const div = document.getElementById('contactList');
+  div.innerHTML = '';
+  currentUser.contacts.forEach(num => {
+    if(db[num]){
+      const c = document.createElement('div');
+      c.className = 'contact';
+      c.textContent = db[num].name + ' (' + num + ')';
+      c.onclick = ()=>openChat(num);
+      div.appendChild(c);
+    }
+  });
+}
+
+function searchByPhone(){
+  const num = searchPhone.value.trim();
+  const resDiv = document.getElementById('searchResult');
+  resDiv.innerHTML = '';
+  if(db[num] && num !== currentUser.phone){
+    const u = db[num];
+    const div = document.createElement('div');
+    div.innerHTML = `<span>${u.name} (${u.phone})</span> <button onclick="addContact('${num}')">Добавить</button>`;
+    resDiv.appendChild(div);
+  } else {
+    resDiv.textContent = 'Не найдено или это вы сами';
+  }
+}
+
+function addContact(num){
+  if(!currentUser.contacts.includes(num)){
+    currentUser.contacts.push(num);
+    db[currentUser.phone].contacts = currentUser.contacts;
+    saveDB();
+    renderContacts();
+    alert('Контакт добавлен!');
+  } else {
+    alert('Контакт уже есть!');
+  }
+}
+
+let chatWith = null;
+function openChat(num){
+  chatWith = num;
+  document.getElementById('chatHeader').textContent = db[num].name + ' (' + num + ')';
+  renderMessages();
+  showChat();
+}
+
+function renderMessages(){
+  const box = document.getElementById('messages');
+  box.innerHTML = '';
+  const msgs = currentUser.messages[chatWith] || [];
+  msgs.forEach(m=>{
+    const div = document.createElement('div');
+    div.className = 'message ' + (m.from===currentUser.phone?'mine':'their');
+    div.textContent = m.text;
+    box.appendChild(div);
+  });
+  box.scrollTop = box.scrollHeight;
+}
+
+function sendMessage(){
+  const text = msgText.value.trim();
+  if(!text) return;
+  msgText.value = '';
+  if(!currentUser.messages[chatWith]) currentUser.messages[chatWith] = [];
+  if(!db[chatWith].messages[currentUser.phone]) db[chatWith].messages[currentUser.phone] = [];
+  const msg = {from: currentUser.phone, text};
+  currentUser.messages[chatWith].push(msg);
+  db[chatWith].messages[currentUser.phone].push(msg);
+  db[currentUser.phone] = currentUser;
+  saveDB();
+  renderMessages();
+}
+
+function backToContacts(){ showContacts(); }
+
+// Обновление чата в реальном времени через событие storage
+window.addEventListener('storage', (e) => {
+  if(e.key === 'vibelite_db' && chatWith){
+    db = JSON.parse(localStorage.getItem('vibelite_db') || '{}');
+    currentUser = db[currentUser.phone];
+    renderMessages();
+  }
+});
+</script>
+</body>
+</html>
